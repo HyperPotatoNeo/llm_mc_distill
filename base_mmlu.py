@@ -38,6 +38,12 @@ def parse_args():
         help="Comma-separated list of specific subjects to evaluate (default: all).",
     )
     parser.add_argument(
+        "--eval_split",
+        type=str,
+        default="test",
+        help="test or validation set",
+    )
+    parser.add_argument(
         "--batch_size",
         type=int,
         default=8,
@@ -141,7 +147,7 @@ def evaluate_mmlu(model, tokenizer, args):
     """Evaluate the model on MMLU dataset."""
     logging.info(f"Loading MMLU dataset...")
     ds = load_dataset("cais/mmlu", "all")
-    eval_split = 'validation'#"test"
+    eval_split = args.eval_split#"test"
     
     # Filter subjects if specified
     if args.subjects:
@@ -245,7 +251,7 @@ def main():
     results = evaluate_mmlu(model, tokenizer, args)
     
     # Save results
-    results_path = os.path.join(args.output_dir, f"{clean_model_name}_mmlu_results.json")
+    results_path = os.path.join(args.output_dir, f"{args.eval_split}_{clean_model_name}_mmlu_results.json")
     with open(results_path, "w") as f:
         json.dump(results, f, indent=4)
     

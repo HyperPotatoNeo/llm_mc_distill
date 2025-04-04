@@ -53,6 +53,12 @@ def parse_args():
         default=4,
         help="Number of available gpus for vllm generation.",
     )
+    parser.add_argument(
+        "--eval_split",
+        type=str,
+        default="test",
+        help="test or validation set",
+    )
     return parser.parse_args()
 
 def create_chat_prompt(question: str, choices: List[str]) -> List[Dict[str, str]]:
@@ -108,18 +114,18 @@ def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list
             question_indices.append(i)
     
     # Generate chain-of-thought completions for all prompts at once.
-    max_tokens = 128  # maximum tokens for chain-of-thought reasoning
+    #max_tokens = 128  # maximum tokens for chain-of-thought reasoning
     sampling_params = SamplingParams(temperature=0.7, max_tokens=2048)
     completions = engine.generate(prompts, sampling_params=sampling_params)
     
     # For each completion, append the fixed string to prompt the final answer log probability computation.
-    final_prompts = [completion.outputs[0].text.strip() + "\nFinal answer index: " for completion in completions]
+    final_prompts = [prompt + completion.outputs[0].text.strip() + "\nFinal answer index: " for completion, prompt in zip(completions,prompts)]
     
     # --- Final answer index forward pass is now batched ---
     predicted_tokens = []
     option_token_ids = [tokenizer.encode(str(j), add_special_tokens=False)[0] for j in range(4)]
-    final_forward_batch_size = 8  # adjust this value as needed
-    for i in range(0, len(final_prompts), final_forward_batch_size):
+    final_forward_batch_size = 4  # adjust this value as needed
+    for i in tqdm(range(0, len(final_prompts), final_forward_batch_size), desc="Computing answer from CoT"):
         batch_prompts = final_prompts[i: i + final_forward_batch_size]
         inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True)
         inputs = inputs.to(model.device)
@@ -154,7 +160,7 @@ def evaluate_mmlu(model, tokenizer, engine, args):
     """Evaluate the model on the MMLU dataset using full-dataset chain-of-thought generations."""
     logging.info("Loading MMLU dataset...")
     ds = load_dataset("cais/mmlu", "all")
-    eval_split = "validation"
+    eval_split = args.eval_split#"test"
     
     # Filter subjects if specified.
     if args.subjects:
@@ -258,7 +264,7 @@ def main():
     results = evaluate_mmlu(model, tokenizer, engine, args)
     
     # Save results.
-    results_path = os.path.join(args.output_dir, f"{clean_model_name}_mmlu_cot_results.json")
+    results_path = os.path.join(args.output_dir, f"{args.eval_split}_{clean_model_name}_mmlu_cot_results.json")
     with open(results_path, "w") as f:
         json.dump(results, f, indent=4)
     
