@@ -2,18 +2,44 @@
 #SBATCH --job-name=mmlu_eval
 #SBATCH --output=logs/mmlu_eval_%j.out
 #SBATCH --error=logs/mmlu_eval_%j.err
-#SBATCH --time=4:00:00
-#SBATCH --mem=64G
-#SBATCH --cpus-per-task=8
-#SBATCH --partition=main
-#SBATCH --gres=gpu:h100:4|gpu:a100:4|gpu:a100l:4|gpu:l40s:4
+#SBATCH --time=2:00:00
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=4
+#SBATCH --partition=unkillable
+#SBATCH --gres=gpu:1
+
 
 mkdir -p logs
 module --quiet load anaconda/3
 # conda activate base
 
+
 python base_mmlu.py \
-    --output_dir "path/to/output" \
+    --model_name "Qwen/Qwen2.5-3B-Instruct" \
+    --output_dir "results" \
     --eval_split "test" \
 
-echo "Finished running""
+# python cot_mmlu.py \
+#     --model_name "Qwen/Qwen2.5-3B-Instruct" \
+#     --output_dir "results" \
+#     --eval_split "test" \
+
+# python train_discrepancy_pred.py \
+#     --model_name "Qwen/Qwen2.5-3B-Instruct" \
+#     --json_path "results/test_mmlu_discrepancy.json" \
+#     --discrepancy "kl" \
+#     --num_epochs 25 \
+#     --batch_size 4 \
+#     --learning_rate 1e-5 \
+#     --accumulate_steps 2 \
+#     --output_dir "$SCRATCH/mc_distill"
+
+# python predict_discrepancy.py \
+#     --discrepancy "kl" \
+#     --eval_split "test" \
+#     --json_path "results/" \
+#     --checkpoint "$SCRATCH/mc_distill/" \
+#     --model_name "Qwen/Qwen2.5-3B-Instruct" \
+#     --output_path "results/"
+
+echo "Finished running"
