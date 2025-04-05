@@ -1,12 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=mmlu_eval
+#SBATCH --job-name=cot_val
 #SBATCH --output=logs/mmlu_eval_%j.out
 #SBATCH --error=logs/mmlu_eval_%j.err
 #SBATCH --time=2:00:00
 #SBATCH --mem=32G
-#SBATCH --cpus-per-task=4
-#SBATCH --partition=unkillable
-#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=1
+#SBATCH --partition=main
+#SBATCH --gres=gpu:a100l:1
+
 
 
 mkdir -p logs
@@ -14,15 +15,15 @@ module --quiet load anaconda/3
 # conda activate base
 
 
-python base_mmlu.py \
-    --model_name "Qwen/Qwen2.5-3B-Instruct" \
-    --output_dir "results" \
-    --eval_split "test" \
-
-# python cot_mmlu.py \
+# python base_mmlu.py \
 #     --model_name "Qwen/Qwen2.5-3B-Instruct" \
 #     --output_dir "results" \
-#     --eval_split "test" \
+#     --eval_split "validation" \
+
+python cot_mmlu.py \
+    --model_name "Qwen/Qwen2.5-3B-Instruct" \
+    --output_dir "results" \
+    --eval_split "validation" \
 
 # python train_discrepancy_pred.py \
 #     --model_name "Qwen/Qwen2.5-3B-Instruct" \
