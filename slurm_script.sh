@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cot_val
+#SBATCH --job-name=cot_test
 #SBATCH --output=logs/mmlu_eval_%j.out
 #SBATCH --error=logs/mmlu_eval_%j.err
 #SBATCH --time=2:00:00
@@ -23,7 +23,7 @@ module --quiet load anaconda/3
 python cot_mmlu.py \
     --model_name "Qwen/Qwen2.5-3B-Instruct" \
     --output_dir "results" \
-    --eval_split "validation" \
+    --eval_split "test" \
     --num_gpus 2
 
 # python train_discrepancy_pred.py \
