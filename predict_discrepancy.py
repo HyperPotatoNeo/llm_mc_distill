@@ -24,11 +24,10 @@ def main():
     parser.add_argument("--output_path", type=str, default="results/", help="Path to save the output JSON file")
     args = parser.parse_args()
     args.json_path = args.json_path + args.eval_split + '_mmlu_discrepancy.json'
+    args.test_json_path = args.test_json_path + 'test' + '_mmlu_discrepancy.json'
     args.checkpoint = args.checkpoint + 'qwen_' + args.discrepancy + '_regression.pt'
     args.output_path = args.output_path + args.eval_split + '_mmlu_pred_' + args.discrepancy + '.json'
 
-    # Compute the mean and std for de-normalizing predictions.
-    mean, std = compute_target_stats(args.json_path, args.discrepancy)
 
     # Load the JSON data.
     with open(args.json_path, "r") as f:
@@ -71,7 +70,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    # Loop over each sample and predict KL.
+    # Loop over each sample and predict discrepancy.
     for sample in tqdm(samples):
         question = sample["question"]
         choices = sample["choices"]
@@ -99,11 +98,12 @@ def main():
 
         # Get the model prediction (normalized).
         with torch.no_grad():
-            pred_norm = model(input_ids=input_ids, attention_mask=attention_mask)
-            # Since we are processing one sample at a time, extract the scalar value.
-            pred_norm = pred_norm.item()
-        # Denormalize the prediction.
-        pred_discrepancy = pred_norm * std + mean
+            if args.discrepancy == "ce_and_entropy":
+                pred_discrepancy = model.predict_difference_denormalized(input_ids=input_ids, attention_mask=attention_mask)
+                pred_discrepancy = pred_discrepancy.item()
+            else:
+                pred_norm = model.predict_denormalized(input_ids=input_ids, attention_mask=attention_mask)
+                pred_norm = pred_norm.item()
 
         # Add the predicted kl value to the sample.
         sample["pred_" + args.discrepancy] = pred_discrepancy

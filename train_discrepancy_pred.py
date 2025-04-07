@@ -70,7 +70,7 @@ class MMLUKLDataset(Dataset):
                 "attention_mask": encoded["attention_mask"].squeeze(0),
                 "target": torch.tensor(target, dtype=torch.bfloat16)
             }
-
+    
 def compute_target_stats(json_path, discrepancy="kl"):
     with open(json_path, "r") as f:
         data = json.load(f)
@@ -102,6 +102,15 @@ def main(args):
     # Compute the mean and std of the KL targets from the JSON file
     mean, std = compute_target_stats(args.json_path, args.discrepancy)
     #print(f"KL Mean: {mean:.4f}, KL Std: {std:.4f}")
+
+    if args.discrepancy == "ce_and_entropy":
+        model.regressor_1_mean = mean[0]
+        model.regressor_1_std = std[0]
+        model.regressor_2_mean = mean[1]
+        model.regressor_2_std = std[1]
+    else:
+        model.regressor_mean = mean
+        model.regressor_std = std
     
     # Initialize Weights & Biases
     wandb.init(

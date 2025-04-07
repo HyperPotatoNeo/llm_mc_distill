@@ -14,10 +14,17 @@ class RegressionModel(nn.Module):
         # for param in self.qwen.parameters():
         #     param.requires_grad = False
         self.regressor = nn.Linear(hidden_size, 1, dtype=torch.bfloat16)
+        self.regressor_mean = None
+        self.regressor_std = None
 
     def forward(self, input_ids, attention_mask):
         outputs = self.qwen(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
         last_hidden = outputs.hidden_states[-1]
         features = last_hidden[:, -1, :]  # Use the last token's hidden state
         pred = self.regressor(features).squeeze(-1)
+        return pred
+    
+    def predict_denormalized(self, input_ids, attention_mask):
+        pred = self.forward(input_ids, attention_mask)
+        pred = pred * self.regressor_std + self.regressor_mean
         return pred
