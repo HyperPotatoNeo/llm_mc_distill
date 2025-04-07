@@ -16,7 +16,7 @@ def compute_target_stats(json_path, discrepancy):
 
 def main():
     parser = argparse.ArgumentParser(description="Predict discrepancy values using the trained Qwen discrepancy predictor.")
-    parser.add_argument("--discrepancy", type=str, default="kl", choices=["kl", "ce"], help="Choice of target discrepancy measure")
+    parser.add_argument("--discrepancy", type=str, default="kl", choices=["kl", "ce", "kl_via_entropy"], help="Choice of target discrepancy measure")
     parser.add_argument("--eval_split", type=str, default="test", help="test or validation set")
     parser.add_argument("--json_path", type=str, default="results/", help="Path to the mmlu_discrepancy json file")
     parser.add_argument("--checkpoint", type=str, default="/pscratch/sd/s/siddart2/mc_distill/kl_regression/", help="Path to the trained model checkpoint")

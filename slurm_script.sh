@@ -25,7 +25,7 @@ python cot_mmlu.py \
     --output_dir "results" \
     --eval_split "test" \
     --num_gpus 4 \
-    --final_forward_batch_size 4
+    --final_forward_batch_size 2
 
 # python train_discrepancy_pred.py \
 #     --model_name "Qwen/Qwen2.5-3B-Instruct" \

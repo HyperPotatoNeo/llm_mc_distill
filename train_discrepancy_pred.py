@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, DataCollatorWithPadding, get_cosine_schedule_with_warmup
 from accelerate import Accelerator
 from models.regress_model import RegressionModel
+from models.two_headed_regress_model import RegressionModel as TwoHeadedRegressionModel
 import wandb
 
 # Define a Dataset that prepares the prompt and target for each sample
@@ -45,22 +46,53 @@ class MMLUKLDataset(Dataset):
             add_generation_prompt=True
         )
         encoded = self.tokenizer(prompt, truncation=True, max_length=512, return_tensors="pt")
-        # Normalize the value target: (kl - mean) / std
-        metric = sample[self.discrepancy]
-        target = (metric - self.mean) / self.std
-        return {
-            "input_ids": encoded["input_ids"].squeeze(0),
-            "attention_mask": encoded["attention_mask"].squeeze(0),
-            "target": torch.tensor(target, dtype=torch.bfloat16)
-        }
+        
+        # Handle different discrepancy types
+        if self.discrepancy == "ce_and_entropy":
+            # For dual-headed model, return both cross-entropy and entropy
+            ce = sample["ce"]
+            entropy = sample["entropy"]
+            # Normalize both targets
+            ce_target = (ce - self.mean[0]) / self.std[0]
+            entropy_target = (entropy - self.mean[1]) / self.std[1]
+            return {
+                "input_ids": encoded["input_ids"].squeeze(0),
+                "attention_mask": encoded["attention_mask"].squeeze(0),
+                "target_ce": torch.tensor(ce_target, dtype=torch.bfloat16),
+                "target_entropy": torch.tensor(entropy_target, dtype=torch.bfloat16)
+            }
+        else:
+            # For single-headed model, keep existing functionality
+            metric = sample[self.discrepancy]
+            target = (metric - self.mean) / self.std
+            return {
+                "input_ids": encoded["input_ids"].squeeze(0),
+                "attention_mask": encoded["attention_mask"].squeeze(0),
+                "target": torch.tensor(target, dtype=torch.bfloat16)
+            }
 
 def compute_target_stats(json_path, discrepancy="kl"):
     with open(json_path, "r") as f:
         data = json.load(f)
-    metrics = [sample[discrepancy] for sample in data["samples"]]
-    mean = sum(metrics) / len(metrics)
-    std = (sum((x - mean) ** 2 for x in metrics) / len(metrics)) ** 0.5
-    return mean, std
+    
+    if discrepancy == "ce_and_entropy":
+        # For dual-headed model, compute statistics for both targets
+        ce_metrics = [sample["ce"] for sample in data["samples"]]
+        entropy_metrics = [sample["entropy"] for sample in data["samples"]]
+        
+        ce_mean = sum(ce_metrics) / len(ce_metrics)
+        ce_std = (sum((x - ce_mean) ** 2 for x in ce_metrics) / len(ce_metrics)) ** 0.5
+        
+        entropy_mean = sum(entropy_metrics) / len(entropy_metrics)
+        entropy_std = (sum((x - entropy_mean) ** 2 for x in entropy_metrics) / len(entropy_metrics)) ** 0.5
+        
+        return [ce_mean, entropy_mean], [ce_std, entropy_std]
+    else:
+        # For single-headed model, keep existing functionality
+        metrics = [sample[discrepancy] for sample in data["samples"]]
+        mean = sum(metrics) / len(metrics)
+        std = (sum((x - mean) ** 2 for x in metrics) / len(metrics)) ** 0.5
+        return mean, std
 
 def main(args):
     # Initialize Accelerator with gradient accumulation steps
@@ -121,8 +153,11 @@ def main(args):
     collator = DataCollatorWithPadding(tokenizer)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collator)
 
-    # Load the regression model
-    model = RegressionModel(args.model_name)
+    # Load the appropriate regression model based on discrepancy type
+    if args.discrepancy == "ce_and_entropy":
+        model = TwoHeadedRegressionModel(args.model_name)
+    else:
+        model = RegressionModel(args.model_name)
     model.to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
@@ -153,10 +188,27 @@ def main(args):
             with accelerator.accumulate(model):
                 input_ids = batch["input_ids"].to(device)
                 attention_mask = batch["attention_mask"].to(device)
-                targets = batch["target"].to(device)
-
-                predictions = model(input_ids=input_ids, attention_mask=attention_mask)
-                loss = criterion(predictions, targets)
+                
+                if args.discrepancy == "ce_and_entropy":
+                    # For dual-headed model
+                    target_ce = batch["target_ce"].to(device)
+                    target_entropy = batch["target_entropy"].to(device)
+                    
+                    # Get predictions from both heads
+                    pred_ce, pred_entropy = model(input_ids=input_ids, attention_mask=attention_mask)
+                    
+                    # Calculate loss for each head
+                    loss_ce = criterion(pred_ce, target_ce)
+                    loss_entropy = criterion(pred_entropy, target_entropy)
+                    
+                    # Combined loss (equal weighting)
+                    loss = loss_ce + loss_entropy
+                else:
+                    # For single-headed model, use existing functionality
+                    targets = batch["target"].to(device)
+                    predictions = model(input_ids=input_ids, attention_mask=attention_mask)
+                    loss = criterion(predictions, targets)
+                
                 accelerator.backward(loss)
                 optimizer.step()
                 # Only step the scheduler if gradients are synced (i.e. at an actual update step)
@@ -170,29 +222,47 @@ def main(args):
             # Optionally log the average loss every accumulation cycle
             if (step + 1) % args.accumulate_steps == 0:
                 avg_loss = running_loss / args.accumulate_steps
-                wandb.log({
-                    "loss": avg_loss,
-                    "lr": scheduler.get_last_lr()[0],
-                    "epoch": epoch + 1,
-                    "step": global_step
-                })
-                #print(f"Epoch {epoch+1}/{args.num_epochs} - Step {step+1}: Avg Loss: {avg_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
+                
+                # Log additional metrics for the dual-headed model
+                if args.discrepancy == "ce_and_entropy":
+                    wandb.log({
+                        "loss": avg_loss,
+                        "loss_ce": loss_ce.item(),
+                        "loss_entropy": loss_entropy.item(),
+                        "lr": scheduler.get_last_lr()[0],
+                        "epoch": epoch + 1,
+                        "step": global_step
+                    })
+                else:
+                    wandb.log({
+                        "loss": avg_loss,
+                        "lr": scheduler.get_last_lr()[0],
+                        "epoch": epoch + 1,
+                        "step": global_step
+                    })
+                
                 running_loss = 0.0
 
     accelerator.wait_for_everyone()
     unwrapped_model = accelerator.unwrap_model(model)
     os.makedirs(args.output_dir, exist_ok=True)
-    output_path = os.path.join(args.output_dir, "qwen_" + args.discrepancy + "_regression.pt")
+    
+    # Save the model with an appropriate filename
+    if args.discrepancy == "ce_and_entropy":
+        output_path = os.path.join(args.output_dir, "qwen_kl_via_entropy_regression.pt")
+    else:
+        output_path = os.path.join(args.output_dir, "qwen_" + args.discrepancy + "_regression.pt")
+    
     torch.save(unwrapped_model.state_dict(), output_path)
     print(f"Training complete and model saved to {output_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train Qwen2.5 3B-Instruct with a linear regression head to predict normalized KL values using Accelerate for multi-GPU training with gradient accumulation."
+        description="Train Qwen2.5 3B-Instruct with a linear regression head to predict normalized discrepancy values using Accelerate for multi-GPU training with gradient accumulation."
     )
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-3B-Instruct", help="Pretrained model name or path")
     parser.add_argument("--json_path", type=str, default="results/test_mmlu_discrepancy.json", help="Path to the mmlu_discrepancy.json file")
-    parser.add_argument("--discrepancy", type=str, default="kl", choices=["kl", "ce"], help="Choice of target discrepancy measure")
+    parser.add_argument("--discrepancy", type=str, default="kl", choices=["kl", "ce", "ce_and_entropy"], help="Choice of target discrepancy measure")
     parser.add_argument("--num_epochs", type=int, default=25, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Training batch size per GPU")
     parser.add_argument("--learning_rate", type=float, default=1e-5, help="Learning rate")
