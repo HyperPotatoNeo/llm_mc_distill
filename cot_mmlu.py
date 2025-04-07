@@ -245,6 +245,35 @@ def evaluate_mmlu(model, tokenizer, engine, args):
     
     return results
 
+def check_memory_allocation(model, tokenizer, batch_size):
+    """Perform a test forward pass on a realistic batch size to catch potential OOM error when using hf at the end."""
+    try:
+        # Load a small sample dataset
+        test_ds = load_dataset("cais/mmlu", "all")["validation"][:batch_size]
+        test_messages = [create_chat_prompt(ex["question"], ex["choices"]) for ex in test_ds]
+
+        # Convert messages into tokenized inputs
+        base_prompts = [
+            tokenizer.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+            for msg in test_messages
+        ]
+
+        # Tokenize the inputs
+        test_inputs = tokenizer(base_prompts, return_tensors="pt", padding=True, truncation=True)
+        test_inputs = test_inputs.to(model.device)
+
+        # Perform a dry forward pass
+        with torch.no_grad():
+            _ = model(**test_inputs)
+        
+        logging.info("Realistic memory check passed. Model should fit into available GPUs.")
+
+    except RuntimeError as e:
+        if "CUDA out of memory" in str(e):
+            logging.error("Memory check failed: CUDA out of memory on a realistic test batch.")
+            raise
+
+
 def main():
     args = parse_args()
     setup_logging()
@@ -263,6 +292,7 @@ def main():
         device_map="auto"
     )
     
+    check_memory_allocation(model, tokenizer, args.final_forward_batch_size)
     # Set up the vllm LLM for full-dataset chain-of-thought generation.
     logging.info("Setting up vllm LLM for chain-of-thought generation...")
     engine = LLM(args.model_name, max_num_seqs=1024, tensor_parallel_size=args.num_gpus)
