@@ -4,7 +4,7 @@
 #SBATCH --error=logs/mmlu_eval_%j.err
 #SBATCH --time=2:00:00
 #SBATCH --mem=32G
-#SBATCH --partition=long
+#SBATCH --partition=main
 #SBATCH --gres=gpu:a100l:4
 #SBATCH --cpus-per-task=4
 

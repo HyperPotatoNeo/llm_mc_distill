@@ -59,6 +59,14 @@ def parse_args():
         default="test",
         help="test or validation set",
     )
+
+    parser.add_argument(
+        "--final_forward_batch_size",
+        type=int,
+        default=4,
+        help="Batch size for final forward pass (using hf not vllm).",
+    )
+    
     return parser.parse_args()
 
 def create_chat_prompt(question: str, choices: List[str]) -> List[Dict[str, str]]:
@@ -87,7 +95,7 @@ def create_chat_prompt(question: str, choices: List[str]) -> List[Dict[str, str]
     )
     return [{"role": "user", "content": user_message}]
 
-def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list: List[List[Dict[str, str]]], num_cot: int):
+def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list: List[List[Dict[str, str]]], num_cot: int, final_forward_batch_size: int):
     """
     For each question prompt in messages_list, generate 'num_cot' chain-of-thought (CoT)
     completions using the vllm engine. For each generated CoT, append the string
@@ -124,7 +132,6 @@ def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list
     # --- Final answer index forward pass is now batched ---
     predicted_tokens = []
     option_token_ids = [tokenizer.encode(str(j), add_special_tokens=False)[0] for j in range(4)]
-    final_forward_batch_size = 4  # adjust this value as needed
     for i in tqdm(range(0, len(final_prompts), final_forward_batch_size), desc="Computing answer from CoT"):
         batch_prompts = final_prompts[i: i + final_forward_batch_size]
         inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True)
@@ -179,7 +186,7 @@ def evaluate_mmlu(model, tokenizer, engine, args):
     
     # Perform vllm generation on the full dataset at once.
     batch_option_probs, batch_cot_predictions = get_cot_empirical_distribution_batch(
-        model, tokenizer, engine, messages_list, args.num_cot
+        model, tokenizer, engine, messages_list, args.num_cot, args.final_forward_batch_size
     )
     
     # Aggregate results.
