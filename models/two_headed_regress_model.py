@@ -19,6 +19,10 @@ class RegressionModel(nn.Module):
         outputs = self.qwen(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
         last_hidden = outputs.hidden_states[-1]
         features = last_hidden[:, -1, :]  # Use the last token's hidden state
-        pred_1 = self.regressor_1(features).squeeze(-1)
-        pred_2 = self.regressor_2(features).squeeze(-1)
+        pred_1 = self.regressor_1(features).squeeze(-1) # by convention we will make this one the cross entropy H(p,)
+        pred_2 = self.regressor_2(features).squeeze(-1) # by convention we will make this one the entropy H(p)
         return pred_1, pred_2
+    
+    def predict_difference(self, input_ids, attention_mask):
+        pred_1, pred_2 = self.forward(input_ids, attention_mask)
+        return pred_1 - pred_2 # this is therefore the kl divergence D(p||q)
