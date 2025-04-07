@@ -1,3 +1,4 @@
 results/
 logs
 logs/
+slurm_script.sh

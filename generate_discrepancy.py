@@ -38,4 +38,4 @@ for i, entry in enumerate(eval_without_cot['samples']):
 with open("results/" + eval_split + "mmlu_discrepancy.json", "w") as out_file:
     json.dump(eval_without_cot, out_file, indent=4)
 
-print("Saved forward KL values to results/" + eval_split + "mmlu_discrepancy.json")
+print("Saved discrepancy values to results/" + eval_split + "mmlu_discrepancy.json")

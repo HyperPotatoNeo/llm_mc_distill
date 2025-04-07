@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=cot_validation
+#SBATCH --job-name=cot_test
 #SBATCH --output=logs/mmlu_eval_%j.out
 #SBATCH --error=logs/mmlu_eval_%j.err
 #SBATCH --time=2:00:00
 #SBATCH --mem=32G
-#SBATCH --partition=main
-#SBATCH --gres=gpu:a100l:2
+#SBATCH --partition=short-unkillable
+#SBATCH --gres=gpu:a100l:4
 #SBATCH --cpus-per-task=4
 
 
@@ -23,8 +23,9 @@ module --quiet load anaconda/3
 python cot_mmlu.py \
     --model_name "Qwen/Qwen2.5-3B-Instruct" \
     --output_dir "results" \
-    --eval_split "validation" \
-    --num_gpus 2
+    --eval_split "test" \
+    --num_gpus 4 \
+    --final_forward_batch_size 4
 
 # python train_discrepancy_pred.py \
 #     --model_name "Qwen/Qwen2.5-3B-Instruct" \

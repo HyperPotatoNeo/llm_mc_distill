@@ -165,7 +165,9 @@ def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list
             predicted_tokens.append(predicted)
     
     # Group the predictions by question.
-    num_questions = len(base_prompts)
+    # num_questions = len(base_prompts)
+    num_questions = max(question_indices) + 1
+
     grouped_predictions = [[] for _ in range(num_questions)]
     for q_idx, pred in zip(question_indices, predicted_tokens):
         grouped_predictions[q_idx].append(pred)
