@@ -249,7 +249,7 @@ def check_memory_allocation(model, tokenizer, batch_size):
     """Perform a test forward pass on a realistic batch size to catch potential OOM error when using hf at the end."""
     try:
         # Load a small sample dataset
-        test_ds = load_dataset("cais/mmlu", "all")["validation"][:batch_size]
+        test_ds = load_dataset("cais/mmlu", "all")["validation"].select(range(batch_size))
         test_messages = [create_chat_prompt(ex["question"], ex["choices"]) for ex in test_ds]
 
         # Convert messages into tokenized inputs
@@ -292,6 +292,7 @@ def main():
         device_map="auto"
     )
     
+    print("args.num_gpus", args.num_gpus)
     check_memory_allocation(model, tokenizer, args.final_forward_batch_size)
     # Set up the vllm LLM for full-dataset chain-of-thought generation.
     logging.info("Setting up vllm LLM for chain-of-thought generation...")
