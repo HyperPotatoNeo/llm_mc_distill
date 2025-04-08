@@ -1,0 +1,37 @@
+DEBUG MODE: Using only 8 samples
+/home/mila/m/matthew.macdermott/miniconda3/lib/python3.10/site-packages/transformers/generation/configuration_utils.py:817: UserWarning: `return_dict_in_generate` is NOT set to `True`, but `output_hidden_states` is. When `return_dict_in_generate` is not `True`, `output_hidden_states` is ignored.
+  warnings.warn(
+Sliding Window Attention is enabled but not implemented for `sdpa`; unexpected results may be encountered.
+Loading checkpoint shards: 100%|██████████| 2/2 [00:00<00:00,  7.25it/s]
+STARTING TRAINING
+EPOCH:  0
+EPOCH:  1
+EPOCH:  2
+EPOCH:  3
+EPOCH:  4
+Model saved to /network/scratch/m/matthew.macdermott/mc_distill/qwen_kl_via_entropy_regression_epoch5.pt
+EPOCH:  5
+EPOCH:  6
+EPOCH:  7
+EPOCH:  8
+EPOCH:  9
+Model saved to /network/scratch/m/matthew.macdermott/mc_distill/qwen_kl_via_entropy_regression_epoch10.pt
+EPOCH:  10
+EPOCH:  11
+EPOCH:  12
+EPOCH:  13
+EPOCH:  14
+Model saved to /network/scratch/m/matthew.macdermott/mc_distill/qwen_kl_via_entropy_regression_epoch15.pt
+EPOCH:  15
+EPOCH:  16
+EPOCH:  17
+EPOCH:  18
+EPOCH:  19
+Model saved to /network/scratch/m/matthew.macdermott/mc_distill/qwen_kl_via_entropy_regression_epoch20.pt
+EPOCH:  20
+EPOCH:  21
+EPOCH:  22
+EPOCH:  23
+EPOCH:  24
+Model saved to /network/scratch/m/matthew.macdermott/mc_distill/qwen_kl_via_entropy_regression_epoch25.pt
+Model saved to /network/scratch/m/matthew.macdermott/mc_distill/qwen_kl_via_entropy_regression.pt

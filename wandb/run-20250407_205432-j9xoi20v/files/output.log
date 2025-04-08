@@ -1,0 +1,15 @@
+/home/mila/m/matthew.macdermott/miniconda3/lib/python3.10/site-packages/transformers/generation/configuration_utils.py:817: UserWarning: `return_dict_in_generate` is NOT set to `True`, but `output_hidden_states` is. When `return_dict_in_generate` is not `True`, `output_hidden_states` is ignored.
+  warnings.warn(
+Sliding Window Attention is enabled but not implemented for `sdpa`; unexpected results may be encountered.
+Loading checkpoint shards: 100%|██████████| 2/2 [00:00<00:00,  2.20it/s]
+STARTING TRAINING
+EPOCH:  0
+EPOCH:  1
+EPOCH:  2
+EPOCH:  3
+EPOCH:  4
+EPOCH:  5
+EPOCH:  6
+EPOCH:  7
+EPOCH:  8
+EPOCH:  9

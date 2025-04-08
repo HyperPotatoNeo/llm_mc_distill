@@ -3,7 +3,8 @@ import math
 import numpy as np
 
 # Replace these file names with the actual names of your JSON files.
-eval_split = "validation_"#"validation_"#"test"
+# eval_split = "validation_"
+eval_split = "test_"
 first_file = "results/" + eval_split + "Qwen-Qwen2.5-3B-Instruct_mmlu_results.json"  # JSON with evaluations without chain-of-thought
 second_file = "results/" + eval_split + "Qwen-Qwen2.5-3B-Instruct_mmlu_cot_results.json"      # JSON with chain-of-thought evaluations
 

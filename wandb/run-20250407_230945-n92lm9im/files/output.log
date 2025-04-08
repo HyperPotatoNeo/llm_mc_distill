@@ -1,0 +1,27 @@
+DEBUG MODE: Using only 8 samples
+/home/mila/m/matthew.macdermott/miniconda3/lib/python3.10/site-packages/transformers/generation/configuration_utils.py:817: UserWarning: `return_dict_in_generate` is NOT set to `True`, but `output_hidden_states` is. When `return_dict_in_generate` is not `True`, `output_hidden_states` is ignored.
+  warnings.warn(
+Sliding Window Attention is enabled but not implemented for `sdpa`; unexpected results may be encountered.
+Loading checkpoint shards: 100%|██████████| 2/2 [00:01<00:00,  1.76it/s]
+STARTING TRAINING
+EPOCH:  0
+EPOCH:  1
+EPOCH:  2
+EPOCH:  3
+EPOCH:  4
+Traceback (most recent call last):
+  File "/network/projects/saifh-science/matt_macdermott/llm_mc_distill/train_discrepancy_pred.py", line 304, in <module>
+    main(args)
+  File "/network/projects/saifh-science/matt_macdermott/llm_mc_distill/train_discrepancy_pred.py", line 279, in main
+    save_model(model, args, epoch + 1)
+  File "/network/projects/saifh-science/matt_macdermott/llm_mc_distill/train_discrepancy_pred.py", line 100, in save_model
+    unwrapped_model = accelerator.unwrap_model(model)
+NameError: name 'accelerator' is not defined. Did you mean: 'Accelerator'?
+Traceback (most recent call last):
+  File "/network/projects/saifh-science/matt_macdermott/llm_mc_distill/train_discrepancy_pred.py", line 304, in <module>
+    main(args)
+  File "/network/projects/saifh-science/matt_macdermott/llm_mc_distill/train_discrepancy_pred.py", line 279, in main
+    save_model(model, args, epoch + 1)
+  File "/network/projects/saifh-science/matt_macdermott/llm_mc_distill/train_discrepancy_pred.py", line 100, in save_model
+    unwrapped_model = accelerator.unwrap_model(model)
+NameError: name 'accelerator' is not defined. Did you mean: 'Accelerator'?

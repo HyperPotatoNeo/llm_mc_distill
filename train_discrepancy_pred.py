@@ -10,6 +10,8 @@ from accelerate import Accelerator
 from models.regress_model import RegressionModel
 from models.two_headed_regress_model import RegressionModel as TwoHeadedRegressionModel
 import wandb
+from dotenv import load_dotenv
+load_dotenv()
 
 # Define a Dataset that prepares the prompt and target for each sample
 class MMLUKLDataset(Dataset):
@@ -94,6 +96,17 @@ def compute_target_stats(json_path, discrepancy="kl"):
         std = (sum((x - mean) ** 2 for x in metrics) / len(metrics)) ** 0.5
         return mean, std
 
+def save_model(unwrapped_model, args, epoch=None):
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    base_name = f"qwen_{'kl_via_entropy' if args.discrepancy == 'ce_and_entropy' else args.discrepancy}_regression"
+    filename = f"{base_name}_epoch{epoch}.pt" if epoch else f"{base_name}.pt"
+    output_path = os.path.join(args.output_dir, filename)
+    
+    torch.save(unwrapped_model.state_dict(), output_path)
+    print(f"Model saved to {output_path}")
+
+
 def main(args):
     # Initialize Accelerator with gradient accumulation steps
     accelerator = Accelerator(gradient_accumulation_steps=args.accumulate_steps)
@@ -103,14 +116,7 @@ def main(args):
     mean, std = compute_target_stats(args.json_path, args.discrepancy)
     #print(f"KL Mean: {mean:.4f}, KL Std: {std:.4f}")
 
-    if args.discrepancy == "ce_and_entropy":
-        model.regressor_1_mean = mean[0]
-        model.regressor_1_std = std[0]
-        model.regressor_2_mean = mean[1]
-        model.regressor_2_std = std[1]
-    else:
-        model.regressor_mean = mean
-        model.regressor_std = std
+
     
     # Initialize Weights & Biases
     wandb.init(
@@ -159,6 +165,11 @@ def main(args):
 
     # Create Dataset and DataLoader
     dataset = MMLUKLDataset(args.json_path, tokenizer, mean, std, incontext_example, args.discrepancy)
+    
+    if args.debug:
+        dataset.samples = dataset.samples[:args.debug_samples]
+        print(f"DEBUG MODE: Using only {len(dataset.samples)} samples")
+    
     collator = DataCollatorWithPadding(tokenizer)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collator)
 
@@ -168,6 +179,14 @@ def main(args):
     else:
         model = RegressionModel(args.model_name)
     model.to(device)
+
+    # Set the mean/std once after model initialization
+    if args.discrepancy == "ce_and_entropy":
+        model.regressor_1_mean, model.regressor_2_mean = mean
+        model.regressor_1_std, model.regressor_2_std = std
+    else:
+        model.regressor_mean = mean
+        model.regressor_std = std
 
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
     
@@ -200,8 +219,8 @@ def main(args):
                 
                 if args.discrepancy == "ce_and_entropy":
                     # For dual-headed model
-                    target_ce = batch["target_ce"].to(device)
-                    target_entropy = batch["target_entropy"].to(device)
+                    target_ce = batch["target_ce"].to(device).to(torch.bfloat16)
+                    target_entropy = batch["target_entropy"].to(device).to(torch.bfloat16)
                     
                     # Get predictions from both heads
                     pred_ce, pred_entropy = model(input_ids=input_ids, attention_mask=attention_mask)
@@ -214,7 +233,7 @@ def main(args):
                     loss = loss_ce + loss_entropy
                 else:
                     # For single-headed model, use existing functionality
-                    targets = batch["target"].to(device)
+                    targets = batch["target"].to(device).to(torch.bfloat16)
                     predictions = model(input_ids=input_ids, attention_mask=attention_mask)
                     loss = criterion(predictions, targets)
                 
@@ -252,18 +271,18 @@ def main(args):
                 
                 running_loss = 0.0
 
+        # Checkpoint saving
+        if (epoch + 1) % args.save_every == 0:
+            accelerator.wait_for_everyone()
+            if accelerator.is_main_process:
+                unwrapped_model = accelerator.unwrap_model(model)
+                save_model(unwrapped_model, args, epoch + 1)
+
+    # Final save
     accelerator.wait_for_everyone()
-    unwrapped_model = accelerator.unwrap_model(model)
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Save the model with an appropriate filename
-    if args.discrepancy == "ce_and_entropy":
-        output_path = os.path.join(args.output_dir, "qwen_kl_via_entropy_regression.pt")
-    else:
-        output_path = os.path.join(args.output_dir, "qwen_" + args.discrepancy + "_regression.pt")
-    
-    torch.save(unwrapped_model.state_dict(), output_path)
-    print(f"Training complete and model saved to {output_path}")
+    if accelerator.is_main_process:
+        unwrapped_model = accelerator.unwrap_model(model)
+        save_model(unwrapped_model, args)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -277,6 +296,10 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate", type=float, default=1e-5, help="Learning rate")
     parser.add_argument("--accumulate_steps", type=int, default=2, help="Number of gradient accumulation steps")
     parser.add_argument("--output_dir", type=str, default="/pscratch/sd/s/siddart2/mc_distill/kl_regression", help="Directory to save the trained model")
+    parser.add_argument("--debug", action="store_true", help="Run in debug mode with limited samples")
+    parser.add_argument("--debug_samples", type=int, default=8, help="Number of samples to use in debug mode")
+    parser.add_argument("--save_every", type=int, default=5, help="Save checkpoint every N epochs")
+  
 
     args = parser.parse_args()
     main(args)

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cot_test
+#SBATCH --job-name=train_kl_via_entropy
 #SBATCH --output=logs/mmlu_eval_%j.out
 #SBATCH --error=logs/mmlu_eval_%j.err
 #SBATCH --time=2:00:00
@@ -20,22 +20,25 @@ module --quiet load anaconda/3
 #     --output_dir "results" \
 #     --eval_split "validation" \
 
-python cot_mmlu.py \
-    --model_name "Qwen/Qwen2.5-3B-Instruct" \
-    --output_dir "results" \
-    --eval_split "test" \
-    --num_gpus 4 \
-    --final_forward_batch_size 2
-
-# python train_discrepancy_pred.py \
+# python cot_mmlu.py \
 #     --model_name "Qwen/Qwen2.5-3B-Instruct" \
-#     --json_path "results/test_mmlu_discrepancy.json" \
-#     --discrepancy "kl" \
-#     --num_epochs 25 \
-#     --batch_size 4 \
-#     --learning_rate 1e-5 \
-#     --accumulate_steps 2 \
-#     --output_dir "$SCRATCH/mc_distill"
+#     --output_dir "results" \
+#     --eval_split "test" \
+#     --num_gpus 4 \
+#     --final_forward_batch_size 2
+
+python train_discrepancy_pred.py \
+    --model_name "Qwen/Qwen2.5-3B-Instruct" \
+    --json_path "results/test_mmlu_discrepancy.json" \
+    --discrepancy "ce_and_entropy" \ 
+    --num_epochs 25 \
+    --batch_size 8 \
+    --learning_rate 1e-5 \
+    --accumulate_steps 2 \
+    --output_dir "$SCRATCH/mc_distill" \
+    --save_every 1 \
+    # --debug \
+    # --debug_samples 8
 
 # python predict_discrepancy.py \
 #     --discrepancy "kl" \
@@ -44,5 +47,6 @@ python cot_mmlu.py \
 #     --checkpoint "$SCRATCH/mc_distill/" \
 #     --model_name "Qwen/Qwen2.5-3B-Instruct" \
 #     --output_path "results/"
+#     --num_gpus 4
 
 echo "Finished running"
