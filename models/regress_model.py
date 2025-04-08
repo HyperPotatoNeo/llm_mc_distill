@@ -14,8 +14,8 @@ class RegressionModel(nn.Module):
         # for param in self.qwen.parameters():
         #     param.requires_grad = False
         self.regressor = nn.Linear(hidden_size, 1, dtype=torch.bfloat16)
-        self.regressor_mean = None
-        self.regressor_std = None
+        self.register_buffer("regressor_mean", torch.tensor(0.0))
+        self.register_buffer("regressor_std", torch.tensor(1.0))
 
     def forward(self, input_ids, attention_mask):
         outputs = self.qwen(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)

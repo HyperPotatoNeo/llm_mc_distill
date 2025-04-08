@@ -5,3 +5,4 @@ slurm_script.sh
 .env
 wandb/
 __pycache__/
+slurm_script.sh

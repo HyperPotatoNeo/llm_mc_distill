@@ -182,11 +182,13 @@ def main(args):
 
     # Set the mean/std once after model initialization
     if args.discrepancy == "ce_and_entropy":
-        model.regressor_1_mean, model.regressor_2_mean = mean
-        model.regressor_1_std, model.regressor_2_std = std
+        model.regressor_1_mean = torch.tensor(mean[0], device=device)
+        model.regressor_2_mean = torch.tensor(mean[1], device=device)
+        model.regressor_1_std = torch.tensor(std[0], device=device)
+        model.regressor_2_std = torch.tensor(std[1], device=device)
     else:
-        model.regressor_mean = mean
-        model.regressor_std = std
+        model.regressor_mean = torch.tensor(mean, device=device)
+        model.regressor_std = torch.tensor(std, device=device)
 
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
     

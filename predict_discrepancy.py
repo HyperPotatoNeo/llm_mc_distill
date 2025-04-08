@@ -3,6 +3,7 @@ import torch
 import argparse
 from transformers import AutoTokenizer
 from models.regress_model import RegressionModel
+from models.two_headed_regress_model import RegressionModel as TwoHeadedRegressionModel
 from tqdm import tqdm
 
 def compute_target_stats(json_path, discrepancy):
@@ -24,8 +25,7 @@ def main():
     parser.add_argument("--output_path", type=str, default="results/", help="Path to save the output JSON file")
     args = parser.parse_args()
     args.json_path = args.json_path + args.eval_split + '_mmlu_discrepancy.json'
-    args.test_json_path = args.test_json_path + 'test' + '_mmlu_discrepancy.json'
-    args.checkpoint = args.checkpoint + 'qwen_' + args.discrepancy + '_regression.pt'
+    args.checkpoint = args.checkpoint + 'qwen_' + args.discrepancy + '_regression_epoch2.pt'#'_regression.pt'
     args.output_path = args.output_path + args.eval_split + '_mmlu_pred_' + args.discrepancy + '.json'
 
 
@@ -62,7 +62,10 @@ def main():
     )
 
     # Load the trained model.
-    model = RegressionModel(args.model_name)
+    if args.discrepancy == "kl_via_entropy":
+        model = TwoHeadedRegressionModel(args.model_name)
+    else:
+        model = RegressionModel(args.model_name)
     state_dict = torch.load(args.checkpoint, map_location="cpu")
     model.load_state_dict(state_dict)
     model.eval()
@@ -98,12 +101,12 @@ def main():
 
         # Get the model prediction (normalized).
         with torch.no_grad():
-            if args.discrepancy == "ce_and_entropy":
+            if args.discrepancy == "kl_via_entropy":
                 pred_discrepancy = model.predict_difference_denormalized(input_ids=input_ids, attention_mask=attention_mask)
                 pred_discrepancy = pred_discrepancy.item()
             else:
-                pred_norm = model.predict_denormalized(input_ids=input_ids, attention_mask=attention_mask)
-                pred_norm = pred_norm.item()
+                pred_discrepancy = model.predict_denormalized(input_ids=input_ids, attention_mask=attention_mask)
+                pred_discrepancy = pred_discrepancy.item()
 
         # Add the predicted kl value to the sample.
         sample["pred_" + args.discrepancy] = pred_discrepancy
