@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--output_path", type=str, default="results/", help="Path to save the output JSON file")
     args = parser.parse_args()
     args.json_path = args.json_path + args.eval_split + '_mmlu_discrepancy.json'
-    args.checkpoint = args.checkpoint + 'qwen_' + args.discrepancy + '_regression_epoch2.pt'#'_regression.pt'
+    args.checkpoint = args.checkpoint + 'qwen_' + args.discrepancy + '_regression.pt'
     args.output_path = args.output_path + args.eval_split + '_mmlu_pred_' + args.discrepancy + '.json'
 
 
