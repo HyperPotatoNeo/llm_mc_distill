@@ -3,3 +3,5 @@ logs
 logs/
 slurm_script.sh
 .env
+wandb/
+__pycache__/
