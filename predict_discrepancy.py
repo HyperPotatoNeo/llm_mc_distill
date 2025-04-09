@@ -3,6 +3,7 @@ import torch
 import argparse
 from transformers import AutoTokenizer
 from models.regress_model import RegressionModel
+from models.two_headed_regress_model import RegressionModel as TwoHeadedRegressionModel
 from tqdm import tqdm
 
 def compute_target_stats(json_path, discrepancy):
@@ -16,7 +17,7 @@ def compute_target_stats(json_path, discrepancy):
 
 def main():
     parser = argparse.ArgumentParser(description="Predict discrepancy values using the trained Qwen discrepancy predictor.")
-    parser.add_argument("--discrepancy", type=str, default="kl", choices=["kl", "ce"], help="Choice of target discrepancy measure")
+    parser.add_argument("--discrepancy", type=str, default="kl", choices=["kl", "ce", "kl_via_entropy"], help="Choice of target discrepancy measure")
     parser.add_argument("--eval_split", type=str, default="test", help="test or validation set")
     parser.add_argument("--json_path", type=str, default="results/", help="Path to the mmlu_discrepancy json file")
     parser.add_argument("--checkpoint", type=str, default="/pscratch/sd/s/siddart2/mc_distill/kl_regression/", help="Path to the trained model checkpoint")
@@ -27,8 +28,6 @@ def main():
     args.checkpoint = args.checkpoint + 'qwen_' + args.discrepancy + '_regression.pt'
     args.output_path = args.output_path + args.eval_split + '_mmlu_pred_' + args.discrepancy + '.json'
 
-    # Compute the mean and std for de-normalizing predictions.
-    mean, std = compute_target_stats(args.json_path, args.discrepancy)
 
     # Load the JSON data.
     with open(args.json_path, "r") as f:
@@ -63,7 +62,10 @@ def main():
     )
 
     # Load the trained model.
-    model = RegressionModel(args.model_name)
+    if args.discrepancy == "kl_via_entropy":
+        model = TwoHeadedRegressionModel(args.model_name)
+    else:
+        model = RegressionModel(args.model_name)
     state_dict = torch.load(args.checkpoint, map_location="cpu")
     model.load_state_dict(state_dict)
     model.eval()
@@ -71,7 +73,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    # Loop over each sample and predict KL.
+    # Loop over each sample and predict discrepancy.
     for sample in tqdm(samples):
         question = sample["question"]
         choices = sample["choices"]
@@ -99,11 +101,12 @@ def main():
 
         # Get the model prediction (normalized).
         with torch.no_grad():
-            pred_norm = model(input_ids=input_ids, attention_mask=attention_mask)
-            # Since we are processing one sample at a time, extract the scalar value.
-            pred_norm = pred_norm.item()
-        # Denormalize the prediction.
-        pred_discrepancy = pred_norm * std + mean
+            if args.discrepancy == "kl_via_entropy":
+                pred_discrepancy = model.predict_difference_denormalized(input_ids=input_ids, attention_mask=attention_mask)
+                pred_discrepancy = pred_discrepancy.item()
+            else:
+                pred_discrepancy = model.predict_denormalized(input_ids=input_ids, attention_mask=attention_mask)
+                pred_discrepancy = pred_discrepancy.item()
 
         # Add the predicted kl value to the sample.
         sample["pred_" + args.discrepancy] = pred_discrepancy

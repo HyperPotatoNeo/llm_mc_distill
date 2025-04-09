@@ -1,3 +1,4 @@
+
 import json
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,7 +8,7 @@ import argparse
 # Data Loading
 # ---------------------------
 parser = argparse.ArgumentParser(description="Evaluate predicted discrepancy measure")
-parser.add_argument("--discrepancy", type=str, default="kl", choices=["kl", "ce"], help="Choice of target discrepancy measure")
+parser.add_argument("--discrepancy", type=str, default="kl", choices=["kl", "ce", "kl_via_entropy"], help="Choice of target discrepancy measure")
 parser.add_argument("--eval_split", type=str, default="validation", help="test or validation set")
 args = parser.parse_args()
 eval_split = args.eval_split  # "test"
@@ -19,11 +20,17 @@ with open('results/' + eval_split + '_Qwen-Qwen2.5-3B-Instruct_mmlu_cot_results.
 mmlu_pred_kl_samples = mmlu_pred_kl_data['samples']
 cot_samples = cot_data['samples']
 
+discrepancy_name = args.discrepancy
+if discrepancy_name == "kl_via_entropy":
+    discrepancy_name = "kl"
+
+
 # ---------------------------
 # Part A: Threshold-based Evaluation using "kl" and "pred_kl"
 # ---------------------------
 # (a) Using the "kl" attribute from mmlu_pred_kl.json.
-pred_kl_values = [sample[args.discrepancy] for sample in mmlu_pred_kl_samples]
+
+pred_kl_values = [sample[discrepancy_name] for sample in mmlu_pred_kl_samples]
 max_pred_kl = max(pred_kl_values)
 thresholds_pred_kl = np.linspace(max_pred_kl, 0, 100)
 accuracies_pred_kl = []
@@ -31,7 +38,7 @@ accuracies_pred_kl = []
 for thresh in thresholds_pred_kl:
     correct = 0
     for i, sample in enumerate(mmlu_pred_kl_samples):
-        if sample[args.discrepancy] > thresh:
+        if sample[discrepancy_name] > thresh:
             pred = cot_samples[i]['predicted_answer']
         else:
             pred = sample['predicted_answer']
@@ -67,7 +74,7 @@ for q in quantile_levels:
     thresh = np.quantile(pred_kl_values, q)
     correct = 0
     for i, sample in enumerate(mmlu_pred_kl_samples):
-        if sample[args.discrepancy] > thresh:
+        if sample[discrepancy_name] > thresh:
             pred = cot_samples[i]['predicted_answer']
         else:
             pred = sample['predicted_answer']

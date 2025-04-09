@@ -59,6 +59,14 @@ def parse_args():
         default="test",
         help="test or validation set",
     )
+
+    parser.add_argument(
+        "--final_forward_batch_size",
+        type=int,
+        default=4,
+        help="Batch size for final forward pass (using hf not vllm).",
+    )
+    
     return parser.parse_args()
 
 def create_chat_prompt(question: str, choices: List[str]) -> List[Dict[str, str]]:
@@ -87,7 +95,7 @@ def create_chat_prompt(question: str, choices: List[str]) -> List[Dict[str, str]
     )
     return [{"role": "user", "content": user_message}]
 
-def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list: List[List[Dict[str, str]]], num_cot: int):
+def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list: List[List[Dict[str, str]]], num_cot: int, final_forward_batch_size: int, checkpoint_path: str):
     """
     For each question prompt in messages_list, generate 'num_cot' chain-of-thought (CoT)
     completions using the vllm engine. For each generated CoT, append the string
@@ -100,31 +108,46 @@ def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list
         batch_option_probs: A list (one per prompt) of lists of probabilities for options 0-3.
         grouped_predictions: A list (one per prompt) containing the raw predicted answer indices from each CoT.
     """
-    # Create base prompt strings using the chat template.
-    base_prompts = [
-        tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        for messages in messages_list
-    ]
-    # Replicate each base prompt 'num_cot' times.
-    prompts = []
-    question_indices = []  # maps each generated prompt back to its question index
-    for i, base in enumerate(base_prompts):
-        for _ in range(num_cot):
-            prompts.append(base)
-            question_indices.append(i)
-    
-    # Generate chain-of-thought completions for all prompts at once.
-    #max_tokens = 128  # maximum tokens for chain-of-thought reasoning
-    sampling_params = SamplingParams(temperature=0.7, max_tokens=2048)
-    completions = engine.generate(prompts, sampling_params=sampling_params)
-    
-    # For each completion, append the fixed string to prompt the final answer log probability computation.
-    final_prompts = [prompt + completion.outputs[0].text.strip() + "\nFinal answer index: " for completion, prompt in zip(completions,prompts)]
+    # Check if checkpoint exists
+    if os.path.exists(checkpoint_path):
+        logging.info(f"Loading vLLM completions from checkpoint: {checkpoint_path}")
+        with open(checkpoint_path, 'r') as f:
+            checkpoint_data = json.load(f)
+            final_prompts = checkpoint_data['final_prompts']
+            question_indices = checkpoint_data['question_indices']
+    else:
+        # Create base prompt strings using the chat template.
+        base_prompts = [
+            tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            for messages in messages_list
+        ]
+        # Replicate each base prompt 'num_cot' times.
+        prompts = []
+        question_indices = []  # maps each generated prompt back to its question index
+        for i, base in enumerate(base_prompts):
+            for _ in range(num_cot):
+                prompts.append(base)
+                question_indices.append(i)
+        
+        # Generate chain-of-thought completions for all prompts at once.
+        #max_tokens = 128  # maximum tokens for chain-of-thought reasoning
+        sampling_params = SamplingParams(temperature=0.7, max_tokens=2048)
+        completions = engine.generate(prompts, sampling_params=sampling_params)
+        
+        # For each completion, append the fixed string to prompt the final answer log probability computation.
+        final_prompts = [prompt + completion.outputs[0].text.strip() + "\nFinal answer index: " for completion, prompt in zip(completions,prompts)]
+        
+        # Add checkpoint saving
+        logging.info(f"Saving vLLM completions to checkpoint: {checkpoint_path}")
+        with open(checkpoint_path, 'w') as f:
+            json.dump({
+                'final_prompts': final_prompts,
+                'question_indices': question_indices
+            }, f)
     
     # --- Final answer index forward pass is now batched ---
     predicted_tokens = []
     option_token_ids = [tokenizer.encode(str(j), add_special_tokens=False)[0] for j in range(4)]
-    final_forward_batch_size = 4  # adjust this value as needed
     for i in tqdm(range(0, len(final_prompts), final_forward_batch_size), desc="Computing answer from CoT"):
         batch_prompts = final_prompts[i: i + final_forward_batch_size]
         inputs = tokenizer(batch_prompts, return_tensors="pt", padding=True)
@@ -142,7 +165,9 @@ def get_cot_empirical_distribution_batch(model, tokenizer, engine, messages_list
             predicted_tokens.append(predicted)
     
     # Group the predictions by question.
-    num_questions = len(base_prompts)
+    # num_questions = len(base_prompts)
+    num_questions = max(question_indices) + 1
+
     grouped_predictions = [[] for _ in range(num_questions)]
     for q_idx, pred in zip(question_indices, predicted_tokens):
         grouped_predictions[q_idx].append(pred)
@@ -178,8 +203,11 @@ def evaluate_mmlu(model, tokenizer, engine, args):
     messages_list = [create_chat_prompt(example["question"], example["choices"]) for example in all_examples]
     
     # Perform vllm generation on the full dataset at once.
+    checkpoint_path = os.path.join(args.output_dir, f"{args.eval_split}_{args.model_name.replace('/', '-')}_vllm_checkpoint.json")
+    
     batch_option_probs, batch_cot_predictions = get_cot_empirical_distribution_batch(
-        model, tokenizer, engine, messages_list, args.num_cot
+        model, tokenizer, engine, messages_list, args.num_cot, 
+        args.final_forward_batch_size, checkpoint_path
     )
     
     # Aggregate results.
@@ -238,6 +266,35 @@ def evaluate_mmlu(model, tokenizer, engine, args):
     
     return results
 
+def check_memory_allocation(model, tokenizer, batch_size):
+    """Perform a test forward pass on a realistic batch size to catch potential OOM error when using hf at the end."""
+    try:
+        # Load a small sample dataset
+        test_ds = load_dataset("cais/mmlu", "all")["validation"].select(range(batch_size))
+        test_messages = [create_chat_prompt(ex["question"], ex["choices"]) for ex in test_ds]
+
+        # Convert messages into tokenized inputs
+        base_prompts = [
+            tokenizer.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+            for msg in test_messages
+        ]
+
+        # Tokenize the inputs
+        test_inputs = tokenizer(base_prompts, return_tensors="pt", padding=True, truncation=True)
+        test_inputs = test_inputs.to(model.device)
+
+        # Perform a dry forward pass
+        with torch.no_grad():
+            _ = model(**test_inputs)
+        
+        logging.info("Realistic memory check passed. Model should fit into available GPUs.")
+
+    except RuntimeError as e:
+        if "CUDA out of memory" in str(e):
+            logging.error("Memory check failed: CUDA out of memory on a realistic test batch.")
+            raise
+
+
 def main():
     args = parse_args()
     setup_logging()
@@ -256,6 +313,8 @@ def main():
         device_map="auto"
     )
     
+    print("args.num_gpus", args.num_gpus)
+    check_memory_allocation(model, tokenizer, args.final_forward_batch_size)
     # Set up the vllm LLM for full-dataset chain-of-thought generation.
     logging.info("Setting up vllm LLM for chain-of-thought generation...")
     engine = LLM(args.model_name, max_num_seqs=1024, tensor_parallel_size=args.num_gpus)

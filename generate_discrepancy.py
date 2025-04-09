@@ -3,7 +3,8 @@ import math
 import numpy as np
 
 # Replace these file names with the actual names of your JSON files.
-eval_split = "validation_"#"validation_"#"test"
+# eval_split = "validation_"
+eval_split = "test_"
 first_file = "results/" + eval_split + "Qwen-Qwen2.5-3B-Instruct_mmlu_results.json"  # JSON with evaluations without chain-of-thought
 second_file = "results/" + eval_split + "Qwen-Qwen2.5-3B-Instruct_mmlu_cot_results.json"      # JSON with chain-of-thought evaluations
 
@@ -20,18 +21,22 @@ for i, entry in enumerate(eval_without_cot['samples']):
 
     kl_divergence = 0.0
     cross_entropy = 0.0
+    entropy = 0.0 #entropy of the CHAIN-OF-THOUGHT distribution p
     for p_val, q_val in zip(p, q):
         # if p_val is zero, the term is 0 (by convention 0 * log(0/q) = 0)
         if p_val > 0:
             kl_divergence += p_val * math.log(p_val / q_val)
             cross_entropy += -p_val * math.log(q_val)
-    
+            entropy += -p_val * math.log(p_val)
+
+    assert np.isclose(kl_divergence, cross_entropy - entropy)
     # Add the computed kl divergence to the current entry
     entry["kl"] = kl_divergence
     entry["ce"] = cross_entropy
+    entry["entropy"] = entropy
 
 # Save the updated list of objects to "mmlu_kl.json"
 with open("results/" + eval_split + "mmlu_discrepancy.json", "w") as out_file:
     json.dump(eval_without_cot, out_file, indent=4)
 
-print("Saved forward KL values to results/" + eval_split + "mmlu_discrepancy.json")
+print("Saved discrepancy values to results/" + eval_split + "mmlu_discrepancy.json")
